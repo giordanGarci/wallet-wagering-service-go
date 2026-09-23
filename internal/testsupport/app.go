@@ -5,6 +5,7 @@ package testsupport
 import (
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,4 +76,44 @@ func (a *App) Get(t testing.TB, path string) (int, []byte) {
 		t.Fatalf("GET %s: read body: %v", path, err)
 	}
 	return resp.StatusCode, body
+}
+
+// Do issues method BaseURL+path with an optional bearer token and raw JSON
+// body ("" sends none) and returns the response and its full body.
+func (a *App) Do(t testing.TB, method, path, token, body string) (*http.Response, []byte) {
+	t.Helper()
+	authorization := ""
+	if token != "" {
+		authorization = "Bearer " + token
+	}
+	return a.DoAuth(t, method, path, authorization, body)
+}
+
+// DoAuth is Do with a verbatim Authorization header value ("" sends none).
+func (a *App) DoAuth(t testing.TB, method, path, authorization, body string) (*http.Response, []byte) {
+	t.Helper()
+	var rd io.Reader
+	if body != "" {
+		rd = strings.NewReader(body)
+	}
+	req, err := http.NewRequest(method, a.BaseURL+path, rd)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, path, err)
+	}
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if authorization != "" {
+		req.Header.Set("Authorization", authorization)
+	}
+	resp, err := a.HTTP.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, path, err)
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("%s %s: read body: %v", method, path, err)
+	}
+	return resp, b
 }

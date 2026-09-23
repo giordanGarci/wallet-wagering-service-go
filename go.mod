@@ -3,19 +3,23 @@ module github.com/junglegaming/backend-challenge-go
 go 1.27.1
 
 require (
+	github.com/MicahParks/keyfunc/v3 v3.8.2
 	github.com/aws/aws-sdk-go-v2 v1.47.0
 	github.com/aws/aws-sdk-go-v2/config v1.33.5
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.5
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.52.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/prometheus/client_golang v1.24.1
 	go.uber.org/fx v1.24.0
 	go.uber.org/goleak v1.3.0
+	golang.org/x/time v0.15.0
 )
 
 require (
+	github.com/MicahParks/jwkset v0.11.3 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.0 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.3 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.3 // indirect

@@ -114,3 +114,23 @@ func TestStartFailsFastWhenDependencyIsMissing(t *testing.T) {
 		t.Errorf("start error %q does not name sqs", err)
 	}
 }
+
+// TestStartFailsFastWhenJWKSIsUnreachable: without signing keys the API
+// could only answer 401, so startup aborts instead.
+func TestStartFailsFastWhenJWKSIsUnreachable(t *testing.T) {
+	infra := testsupport.NewInfra(t)
+	cfg := infra.Config
+	cfg.OIDC.JWKSURL = "http://127.0.0.1:1/realms/wallet/protocol/openid-connect/certs"
+
+	app := bootstrap.New(cfg)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	err := app.Start(ctx)
+	if err == nil {
+		_ = app.Stop(ctx)
+		t.Fatal("start succeeded with an unreachable JWKS, want an error")
+	}
+	if !strings.Contains(err.Error(), "oidc") {
+		t.Errorf("start error %q does not name oidc", err)
+	}
+}

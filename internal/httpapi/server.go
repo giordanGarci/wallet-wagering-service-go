@@ -1,6 +1,7 @@
 // Package httpapi hosts the HTTP server, the operational endpoints
-// (/health/live, /health/ready, /metrics) and, in later tickets, the business
-// handlers with authentication and authorization.
+// (/health/live, /health/ready, /metrics) and the business handlers with
+// authentication (auth.go), authorization policies and the single error
+// body (errors.go).
 //
 // The server runs in every instance, whatever APP_ROLES says, so orchestrators
 // can always probe it. Business routes join through the "http_routes" value

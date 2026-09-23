@@ -1,5 +1,6 @@
-// Package postgres owns the pgx connection pool and, in later tickets, the
-// repositories and the unit of work built on top of it.
+// Package postgres owns the pgx connection pool and the adapters built on
+// it: repositories with explicit SQL, the unit of work, and the mapping of
+// constraint violations and transient failures to app errors.
 package postgres
 
 import (
@@ -10,11 +11,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"
 
+	"github.com/junglegaming/backend-challenge-go/internal/app"
 	"github.com/junglegaming/backend-challenge-go/internal/config"
 	"github.com/junglegaming/backend-challenge-go/internal/health"
 )
 
-// Module provides *pgxpool.Pool and the "postgres" readiness check.
+// Module provides *pgxpool.Pool, the "postgres" readiness check, the
+// app.UnitOfWork and the pool-bound app.WalletRepository (reads outside a
+// transaction).
 //
 // The pool is created lazily in the constructor; OnStart pings it so the
 // app fails fast when the database is unreachable, and OnStop closes it.
@@ -24,6 +28,9 @@ var Module = fx.Module("postgres",
 	fx.Provide(
 		NewPool,
 		health.AsCheck(NewReadinessCheck),
+		fx.Annotate(NewUnitOfWork, fx.As(new(app.UnitOfWork))),
+		fx.Annotate(func(pool *pgxpool.Pool) *WalletRepository { return NewWalletRepository(pool) },
+			fx.As(new(app.WalletRepository))),
 	),
 )
 

@@ -11,6 +11,7 @@
 //	TEST_DATABASE_URL      admin connection used to CREATE/DROP the per-run database
 //	                       (default postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable)
 //	TEST_AWS_ENDPOINT_URL  SQS endpoint (default http://localhost:4566)
+//	TEST_KEYCLOAK_URL, TEST_OIDC_ISSUER_URL  Keycloak and expected issuer (see auth.go)
 //	AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY  (defaults us-east-1, test, test)
 package testsupport
 
@@ -52,7 +53,9 @@ type Infra struct {
 	// database and queues, listens on 127.0.0.1:0 and enables APP_ROLES=api.
 	Config config.Config
 
-	DatabaseName   string
+	DatabaseName string
+	// DatabaseURL connects to the isolated database (for direct SQL checks).
+	DatabaseURL    string
 	AdminURL       string
 	DLQQueueURL    string
 	InputQueueURL  string
@@ -82,6 +85,7 @@ func NewInfra(t testing.TB) *Infra {
 	if err != nil {
 		t.Fatalf("testsupport: %v", err)
 	}
+	inf.DatabaseURL = dbURL
 	if err := execAdmin(ctx, inf.AdminURL, "CREATE DATABASE "+pgx.Identifier{inf.DatabaseName}.Sanitize()); err != nil {
 		t.Fatalf("testsupport: create database: %v", err)
 	}
@@ -127,6 +131,8 @@ func NewInfra(t testing.TB) *Infra {
 			"APP_ROLES":            "api",
 			"SHUTDOWN_TIMEOUT":     "10s",
 			"LOG_LEVEL":            env("TEST_LOG_LEVEL", "warn"),
+			"OIDC_ISSUER_URL":      IssuerURL(),
+			"OIDC_JWKS_URL":        KeycloakJWKSURL(),
 		}[k]
 		return v, ok
 	})

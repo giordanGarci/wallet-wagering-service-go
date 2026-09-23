@@ -12,6 +12,7 @@ import (
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 
+	"github.com/junglegaming/backend-challenge-go/internal/app"
 	"github.com/junglegaming/backend-challenge-go/internal/config"
 	"github.com/junglegaming/backend-challenge-go/internal/httpapi"
 	"github.com/junglegaming/backend-challenge-go/internal/observability"
@@ -51,6 +52,7 @@ func Options(cfg config.Config, extra ...fx.Option) fx.Option {
 		// and the pool and AWS client close last.
 		observability.Module,
 		postgres.Module,
+		app.Module,
 		sqs.Module,
 		httpapi.ServerModule,
 	}
