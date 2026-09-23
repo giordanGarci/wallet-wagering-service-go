@@ -1,0 +1,7 @@
+.git
+.claude
+.codegraph
+.scratch
+.env
+docs
+*.md

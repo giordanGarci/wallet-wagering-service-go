@@ -1,0 +1,77 @@
+name: wallet
+
+x-app-env: &app-env
+  env_file:
+    - path: .env.example
+    - path: .env
+      required: false
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+      POSTGRES_DB: wallet
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet -d wallet"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  ministack:
+    image: ministackorg/ministack:1.5.16
+    ports:
+      - "4566:4566"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request as r; r.urlopen('http://localhost:4566/_ministack/health')\""]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    image: migrate/migrate:v4.19.1
+    <<: *app-env
+    volumes:
+      - ./migrations:/migrations:ro
+    # `docker compose run --rm migrate <up|down 1|version|...>` replaces the command.
+    entrypoint: ["sh", "-c", 'exec migrate -path /migrations -database "$$DATABASE_URL" "$$@"', "migrate"]
+    command: ["up"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  sqs-init:
+    image: ministackorg/ministack:1.5.16
+    <<: *app-env
+    volumes:
+      - ./deploy/sqs-init:/deploy/sqs-init:ro
+    entrypoint: ["sh", "/deploy/sqs-init/init.sh"]
+    healthcheck:
+      disable: true
+    depends_on:
+      ministack:
+        condition: service_healthy
+
+  app:
+    build: .
+    <<: *app-env
+    ports:
+      - "8080:8080"
+    stop_grace_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ministack:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      sqs-init:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

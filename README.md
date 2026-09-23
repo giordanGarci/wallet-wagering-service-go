@@ -23,12 +23,12 @@ Serviço em Go que movimenta carteiras de jogadores a partir de operações de p
 | --- | --- | --- |
 | `app` | 8080 | API HTTP, consumidor SQS, publisher da outbox e worker de referências pendentes |
 | `postgres` | 5432 | PostgreSQL |
-| `keycloak` | 8081 | IdP OAuth 2.0/OIDC com realm `wallet` provisionado automaticamente |
-| `ministack` | 4566 | Emulador AWS (SQS), sem conta nem token |
-| `sqs-init` | | Cria filas e redrive policy e encerra |
-| `migrate` | | Aplica as migrations e encerra |
-| `jaeger` | 16686 | Tracing (profile `observability`) |
-| `prometheus` | 9090 | Métricas (profile `observability`) |
+| `keycloak` | 8081 | IdP OAuth 2.0/OIDC com realm `wallet` provisionado automaticamente ⏳ |
+| `ministack` | 4566 | Emulador AWS (SQS, imagem `ministackorg/ministack`), sem conta nem token |
+| `sqs-init` | | Cria filas e redrive policy e encerra (`deploy/sqs-init/init.sh`) |
+| `migrate` | | Aplica as migrations (CLI `golang-migrate`) e encerra |
+| `jaeger` | 16686 | Tracing (profile `observability`) ⏳ |
+| `prometheus` | 9090 | Métricas (profile `observability`) ⏳ |
 
 ## Variáveis de ambiente
 
@@ -38,23 +38,26 @@ Copie o exemplo e ajuste se necessário:
 cp .env.example .env
 ```
 
-| Variável | Exemplo | Descrição |
-| --- | --- | --- |
-| `HTTP_ADDR` | `:8080` | Endereço do servidor HTTP |
-| `DATABASE_URL` | `postgres://wallet:wallet@postgres:5432/wallet?sslmode=disable` | Conexão PostgreSQL |
-| `AWS_ENDPOINT_URL` | `http://ministack:4566` | Endpoint do emulador SQS |
-| `AWS_REGION` | `us-east-1` | Região AWS |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | `wallet-consumer` / `local-secret` | Credenciais do consumidor no broker |
-| `SQS_INPUT_QUEUE_URL` | `http://ministack:4566/000000000000/wager-transactions.fifo` | Fila de entrada |
-| `SQS_EVENTS_QUEUE_URL` | `http://ministack:4566/000000000000/wallet-events.fifo` | Fila de eventos publicados pela outbox |
-| `OIDC_ISSUER_URL` | `http://keycloak:8081/realms/wallet` | Issuer esperado nos tokens |
-| `OIDC_AUDIENCE` | `wallet-api` | Audience exigida |
-| `APP_ROLES` | `api,consumer,outbox,pending` | Componentes ativos nesta instância |
-| `PENDING_MAX_ATTEMPTS` | `8` | Tentativas antes de rejeitar com `REFERENCE_NOT_FOUND` |
-| `SHUTDOWN_TIMEOUT` | `25s` | Prazo para concluir trabalho em andamento no `SIGTERM` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://jaeger:4318` | Exportador de traces (opcional) |
+| Variável | Exemplo | Padrão | Descrição |
+| --- | --- | --- | --- |
+| `HTTP_ADDR` | `:8080` | `:8080` | Endereço do servidor HTTP |
+| `DATABASE_URL` | `postgres://wallet:wallet@postgres:5432/wallet?sslmode=disable` | obrigatória | Conexão PostgreSQL |
+| `AWS_ENDPOINT_URL` | `http://ministack:4566` | endpoint real da AWS | Endpoint do emulador SQS |
+| `AWS_REGION` | `us-east-1` | `us-east-1` | Região AWS |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | `wallet-consumer` / `local-secret` | cadeia padrão do SDK | Credenciais do consumidor no broker |
+| `SQS_INPUT_QUEUE_URL` | `http://ministack:4566/000000000000/wager-transactions.fifo` | obrigatória | Fila de entrada |
+| `SQS_EVENTS_QUEUE_URL` | `http://ministack:4566/000000000000/wallet-events.fifo` | obrigatória | Fila de eventos publicados pela outbox |
+| `OIDC_ISSUER_URL` | `http://keycloak:8081/realms/wallet` | | Issuer esperado nos tokens ⏳ |
+| `OIDC_AUDIENCE` | `wallet-api` | | Audience exigida ⏳ |
+| `APP_ROLES` | `api,consumer,outbox,pending` | todos | Componentes ativos nesta instância (lista separada por vírgula) |
+| `PENDING_MAX_ATTEMPTS` | `8` | | Tentativas antes de rejeitar com `REFERENCE_NOT_FOUND` ⏳ |
+| `SHUTDOWN_TIMEOUT` | `25s` | `25s` | Prazo para concluir trabalho em andamento no `SIGTERM` |
+| `LOG_LEVEL` | `info` | `info` | Nível dos logs JSON: `debug`, `info`, `warn`, `error` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://jaeger:4318` | | Exportador de traces (opcional) ⏳ |
 
-O `.env.example` contém apenas valores locais de exemplo, sem segredos reais.
+O `.env.example` contém apenas valores locais de exemplo, sem segredos reais. O compose carrega `.env.example` e, se existir, `.env` por cima dele. A configuração é validada antes de qualquer conexão: um valor inválido encerra o processo com status 2 e uma única mensagem listando todos os problemas.
+
+Por enquanto só o papel `api` está implementado; os demais papéis são aceitos e registram um aviso `role not implemented yet` na subida. O servidor HTTP (health e `/metrics`) roda em todas as instâncias, qualquer que seja `APP_ROLES`.
 
 ## Executando
 
@@ -62,12 +65,17 @@ O `.env.example` contém apenas valores locais de exemplo, sem segredos reais.
 docker compose up --build
 ```
 
-A ordem de inicialização é: `postgres`, `keycloak` e `ministack` saudáveis, depois `migrate` e `sqs-init`, depois `app`. Verifique:
+A ordem de inicialização é: `postgres`, `keycloak` ⏳ e `ministack` saudáveis, depois `migrate` e `sqs-init`, depois `app`. Verifique:
 
 ```sh
-curl -s localhost:8080/health/live
-curl -s localhost:8080/health/ready
+curl -s localhost:8080/health/live    # {"status":"ok"}
+curl -s localhost:8080/health/ready   # {"status":"ok","checks":{"postgres":"up","sqs":"up"}}
+curl -s localhost:8080/metrics        # formato Prometheus
 ```
+
+`/health/ready` responde `503` com `"status":"unavailable"` e o check afetado como `"down"` quando o PostgreSQL ou alguma fila configurada não responde em 2s. Na subida, a aplicação falha cedo se o PostgreSQL ou as filas estiverem inacessíveis. No `SIGTERM`, o servidor HTTP para de aceitar conexões primeiro, depois o pool pgx e o cliente SQS são fechados, tudo dentro de `SHUTDOWN_TIMEOUT`.
+
+O MiniStack não persiste estado: se o container `ministack` for reiniciado, recrie as filas com `docker compose run --rm sqs-init`.
 
 Com observabilidade:
 
@@ -101,7 +109,7 @@ Mensagens de entrada usam `MessageGroupId = walletId` e `MessageDeduplicationId 
 
 ## Migrations
 
-As migrations são versionadas em `migrations/` e aplicadas pelo serviço `migrate` na subida do compose.
+As migrations são versionadas em `migrations/` no formato do [golang-migrate](https://github.com/golang-migrate/migrate) (`NNNNNN_descricao.up.sql` e `NNNNNN_descricao.down.sql`, numeração sequencial de 6 dígitos) e aplicadas pelo serviço `migrate` na subida do compose, usando `DATABASE_URL`. Os testes de integração aplicam os mesmos arquivos, embutidos no pacote `migrations`.
 
 ```sh
 # aplicar todas
@@ -186,8 +194,10 @@ Os códigos HTTP e corpos de resposta (400, 401, 403, 404, 409, 422, 202, 503) e
 | --- | --- | --- |
 | Unitários | `go test ./...` | Nada |
 | Unitários com race | `go test -race ./...` | Nada (CGO habilitado) |
+| Unitários com race, sem compilador C no host | `scripts/test-race.sh` | Docker |
 | Análise estática | `go vet ./...` | Nada |
 | Integração | `go test -tags=integration -race ./...` | Infraestrutura de teste |
+| Integração com race, sem compilador C no host | `scripts/test-race.sh -tags=integration ./...` | Infraestrutura de teste |
 | Múltiplas instâncias (3 processos) | `go test -tags=e2e -race ./test/e2e/...` | Infraestrutura de teste |
 | Simulação de falhas | `go test -tags=e2e,faultinject ./test/e2e/...` | Infraestrutura de teste |
 
@@ -197,7 +207,17 @@ Os códigos HTTP e corpos de resposta (400, 401, 403, 404, 409, 422, 202, 503) e
 docker compose up -d postgres keycloak ministack migrate sqs-init
 ```
 
-Os testes de integração criam um banco isolado por execução e filas com sufixo aleatório, então podem rodar em paralelo ao ambiente de desenvolvimento.
+(`keycloak` entra no compose com a autenticação ⏳; até lá, omita-o.)
+
+Os testes de integração criam um banco isolado por execução e filas com sufixo aleatório, então podem rodar em paralelo ao ambiente de desenvolvimento. O harness (`internal/testsupport`) sobe a aplicação Fx dentro do processo de teste e lê os endpoints destas variáveis:
+
+| Variável | Padrão | Uso |
+| --- | --- | --- |
+| `TEST_DATABASE_URL` | `postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable` | Conexão administrativa para `CREATE`/`DROP DATABASE` do banco isolado |
+| `TEST_AWS_ENDPOINT_URL` | `http://localhost:4566` | Endpoint SQS onde as filas isoladas são criadas |
+| `TEST_LOG_LEVEL` | `warn` | Nível de log da aplicação durante os testes |
+
+`scripts/test-race.sh` roda `go test -race` dentro da imagem `golang` da mesma versão do `go.mod` (o race detector exige CGO); com a tag `integration` ou `e2e`, o container entra na rede `wallet_default` do compose e aponta essas variáveis para `postgres` e `ministack`.
 
 ### Múltiplas instâncias
 
@@ -225,16 +245,22 @@ Metodologia, ambiente e resultados (throughput, p50/p95/p99, erros, conflitos e 
 ## Estrutura
 
 ```text
-cmd/app/             entrada da aplicação (composição Fx)
-internal/domain/     Money, Wallet, WagerTransaction, LedgerEntry, eventos (sem dependências de infra)
-internal/app/        casos de uso compartilhados por HTTP e SQS
-internal/postgres/   repositórios pgx e delimitação de transação
-internal/httpapi/    handlers, autenticação e autorização
-internal/sqs/        consumidor e publisher
-internal/worker/     outbox e referências pendentes
-migrations/          migrations SQL versionadas
-deploy/              realm Keycloak, init de filas, Prometheus, k6
-test/e2e/            testes com múltiplos processos e injeção de falhas
+cmd/app/                 entrada da aplicação: carrega a config e roda o app Fx
+internal/config/         variáveis de ambiente, validação e papéis (APP_ROLES)
+internal/bootstrap/      raiz de composição Fx: módulos de infraestrutura e seleção de papéis
+internal/observability/  logger slog JSON e registry Prometheus
+internal/health/         checks de readiness (value group Fx) e handlers /health/*
+internal/domain/         Money, Wallet, WagerTransaction, LedgerEntry, eventos (sem dependências de infra)
+internal/app/            casos de uso compartilhados por HTTP e SQS
+internal/postgres/       pool pgx, repositórios e delimitação de transação
+internal/httpapi/        servidor HTTP, handlers, autenticação e autorização
+internal/sqs/            cliente SQS, consumidor e publisher
+internal/worker/         outbox e referências pendentes
+internal/testsupport/    harness de integração (build tags integration/e2e)
+migrations/              migrations SQL versionadas (golang-migrate), embutidas para os testes
+deploy/                  init de filas, realm Keycloak, Prometheus, k6
+scripts/                 utilitários de desenvolvimento (race em container)
+test/e2e/                testes com múltiplos processos e injeção de falhas
 ```
 
 ## Qualidade
