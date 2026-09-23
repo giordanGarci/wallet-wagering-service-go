@@ -92,6 +92,17 @@ func (a *App) Do(t testing.TB, method, path, token, body string) (*http.Response
 // DoAuth is Do with a verbatim Authorization header value ("" sends none).
 func (a *App) DoAuth(t testing.TB, method, path, authorization, body string) (*http.Response, []byte) {
 	t.Helper()
+	h := http.Header{}
+	if authorization != "" {
+		h.Set("Authorization", authorization)
+	}
+	return a.DoWith(t, method, path, body, h)
+}
+
+// DoWith issues method BaseURL+path with a raw JSON body ("" sends none) and
+// the given extra headers (e.g. Authorization, X-Correlation-Id).
+func (a *App) DoWith(t testing.TB, method, path, body string, header http.Header) (*http.Response, []byte) {
+	t.Helper()
 	var rd io.Reader
 	if body != "" {
 		rd = strings.NewReader(body)
@@ -103,8 +114,8 @@ func (a *App) DoAuth(t testing.TB, method, path, authorization, body string) (*h
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if authorization != "" {
-		req.Header.Set("Authorization", authorization)
+	for k, v := range header {
+		req.Header[k] = v
 	}
 	resp, err := a.HTTP.Do(req)
 	if err != nil {

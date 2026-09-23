@@ -64,8 +64,10 @@ services:
     <<: *app-env
     volumes:
       - ./migrations:/migrations:ro
+    # Runs as the schema owner (MIGRATE_DATABASE_URL); the app connects as
+    # the least-privilege role wallet_app that the migrations create.
     # `docker compose run --rm migrate <up|down 1|version|...>` replaces the command.
-    entrypoint: ["sh", "-c", 'exec migrate -path /migrations -database "$$DATABASE_URL" "$$@"', "migrate"]
+    entrypoint: ["sh", "-c", 'exec migrate -path /migrations -database "$$MIGRATE_DATABASE_URL" "$$@"', "migrate"]
     command: ["up"]
     depends_on:
       postgres:

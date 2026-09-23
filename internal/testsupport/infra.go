@@ -9,7 +9,9 @@
 // container on the compose network:
 //
 //	TEST_DATABASE_URL      admin connection used to CREATE/DROP the per-run database
-//	                       (default postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable)
+//	                       (default postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable);
+//	                       its user owns the schema (runs the migrations); the app
+//	                       connects to the per-run database as AppRole
 //	TEST_AWS_ENDPOINT_URL  SQS endpoint (default http://localhost:4566)
 //	TEST_KEYCLOAK_URL, TEST_OIDC_ISSUER_URL  Keycloak and expected issuer (see auth.go)
 //	AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY  (defaults us-east-1, test, test)
@@ -36,9 +38,18 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5" // registers pgx5://
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/junglegaming/backend-challenge-go/internal/config"
 	"github.com/junglegaming/backend-challenge-go/migrations"
+)
+
+// AppRole and AppRolePassword are the least-privilege database role the
+// migrations create (migrations/000006_app_role.up.sql). The app connects
+// as it; the schema owner keeps running migrations and assertions.
+const (
+	AppRole         = "wallet_app"
+	AppRolePassword = "wallet_app"
 )
 
 const (
@@ -54,8 +65,12 @@ type Infra struct {
 	Config config.Config
 
 	DatabaseName string
-	// DatabaseURL connects to the isolated database (for direct SQL checks).
-	DatabaseURL    string
+	// DatabaseURL connects to the isolated database as the schema owner
+	// (the TEST_DATABASE_URL user): migrations and direct SQL checks.
+	DatabaseURL string
+	// AppDatabaseURL connects to the isolated database as the
+	// least-privilege application role (AppRole); Config.DatabaseURL uses it.
+	AppDatabaseURL string
 	AdminURL       string
 	DLQQueueURL    string
 	InputQueueURL  string
@@ -93,6 +108,9 @@ func NewInfra(t testing.TB) *Infra {
 	if err := MigrateUp(dbURL); err != nil {
 		t.Fatalf("testsupport: migrate: %v", err)
 	}
+	if inf.AppDatabaseURL, err = withCredentials(dbURL, AppRole, AppRolePassword); err != nil {
+		t.Fatalf("testsupport: %v", err)
+	}
 
 	endpoint := env("TEST_AWS_ENDPOINT_URL", defaultAWSEndpoint)
 	region := env("AWS_REGION", "us-east-1")
@@ -123,7 +141,7 @@ func NewInfra(t testing.TB) *Infra {
 	inf.Config, err = config.FromLookup(func(k string) (string, bool) {
 		v, ok := map[string]string{
 			"HTTP_ADDR":            "127.0.0.1:0",
-			"DATABASE_URL":         dbURL,
+			"DATABASE_URL":         inf.AppDatabaseURL,
 			"AWS_ENDPOINT_URL":     endpoint,
 			"AWS_REGION":           region,
 			"SQS_INPUT_QUEUE_URL":  inf.InputQueueURL,
@@ -230,6 +248,28 @@ func execAdmin(ctx context.Context, adminURL, sql string) error {
 	defer conn.Close(context.Background())
 	_, err = conn.Exec(ctx, sql)
 	return err
+}
+
+// withCredentials returns rawURL with its user and password replaced.
+func withCredentials(rawURL, user, password string) (string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("database url: %w", err)
+	}
+	u.User = url.UserPassword(user, password)
+	return u.String(), nil
+}
+
+// OpenPool connects a pgx pool to databaseURL, closed on test cleanup
+// (before the isolated database is dropped).
+func OpenPool(t testing.TB, databaseURL string) *pgxpool.Pool {
+	t.Helper()
+	pool, err := pgxpool.New(context.Background(), databaseURL)
+	if err != nil {
+		t.Fatalf("testsupport: open pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
 }
 
 func withDatabase(rawURL, name string) (string, error) {
