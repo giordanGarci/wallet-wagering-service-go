@@ -7,7 +7,8 @@
 #
 # With an integration/e2e tag the container joins the compose network
 # (COMPOSE_NETWORK, default wallet_default) and the harness targets the
-# services by name.
+# services by name. Keycloak is reached as keycloak:8080 but still issues
+# tokens for the public issuer localhost:${KEYCLOAK_PORT:-8081}.
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && { pwd -W 2>/dev/null || pwd; })
@@ -21,6 +22,8 @@ case " $* " in
       --network "${COMPOSE_NETWORK:-wallet_default}" \
       -e "TEST_DATABASE_URL=postgres://wallet:wallet@postgres:5432/wallet?sslmode=disable" \
       -e "TEST_AWS_ENDPOINT_URL=http://ministack:4566" \
+      -e "TEST_KEYCLOAK_URL=http://keycloak:8080" \
+      -e "TEST_OIDC_ISSUER_URL=http://localhost:${KEYCLOAK_PORT:-8081}/realms/wallet" \
       -v "$root:/src" -w /src \
       -v wallet-gomodcache:/go/pkg/mod -v wallet-gobuildcache:/root/.cache/go-build \
       "$image" go test -race "$@"

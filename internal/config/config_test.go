@@ -15,6 +15,7 @@ func validEnv() map[string]string {
 		"AWS_ENDPOINT_URL":     "http://localhost:4566",
 		"SQS_INPUT_QUEUE_URL":  "http://localhost:4566/000000000000/wager-transactions.fifo",
 		"SQS_EVENTS_QUEUE_URL": "http://localhost:4566/000000000000/wallet-events.fifo",
+		"OIDC_ISSUER_URL":      "http://localhost:8081/realms/wallet",
 	}
 }
 
@@ -126,5 +127,72 @@ func TestLoadDoesNotEchoDatabaseCredentials(t *testing.T) {
 	_, err := load(env)
 	if err == nil || strings.Contains(err.Error(), "s3cr3t") {
 		t.Fatalf("error must exist and hide credentials, got %v", err)
+	}
+}
+
+func TestLoadOIDCDefaults(t *testing.T) {
+	cfg, err := load(validEnv())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.OIDC.IssuerURL != "http://localhost:8081/realms/wallet" {
+		t.Errorf("IssuerURL = %q", cfg.OIDC.IssuerURL)
+	}
+	if cfg.OIDC.Audience != "wallet-api" {
+		t.Errorf("Audience = %q, want wallet-api", cfg.OIDC.Audience)
+	}
+	if want := "http://localhost:8081/realms/wallet/protocol/openid-connect/certs"; cfg.OIDC.JWKSURL != want {
+		t.Errorf("JWKSURL = %q, want %q (derived from the issuer)", cfg.OIDC.JWKSURL, want)
+	}
+}
+
+func TestLoadOIDCOverrides(t *testing.T) {
+	env := validEnv()
+	env["OIDC_ISSUER_URL"] = "http://localhost:8081/realms/wallet/"
+	env["OIDC_AUDIENCE"] = "other-api"
+	env["OIDC_JWKS_URL"] = "http://keycloak:8080/realms/wallet/protocol/openid-connect/certs"
+	cfg, err := load(env)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.OIDC.IssuerURL != "http://localhost:8081/realms/wallet/" {
+		t.Errorf("IssuerURL = %q, want it verbatim (it must equal the token iss)", cfg.OIDC.IssuerURL)
+	}
+	if cfg.OIDC.Audience != "other-api" {
+		t.Errorf("Audience = %q", cfg.OIDC.Audience)
+	}
+	if cfg.OIDC.JWKSURL != env["OIDC_JWKS_URL"] {
+		t.Errorf("JWKSURL = %q", cfg.OIDC.JWKSURL)
+	}
+}
+
+func TestLoadRejectsInvalidOIDC(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutate  func(map[string]string)
+		wantErr string
+	}{
+		{"missing issuer with api role", func(e map[string]string) { delete(e, "OIDC_ISSUER_URL") }, "OIDC_ISSUER_URL: required"},
+		{"issuer not a url", func(e map[string]string) { e["OIDC_ISSUER_URL"] = "keycloak" }, "OIDC_ISSUER_URL: not a valid URL"},
+		{"jwks wrong scheme", func(e map[string]string) { e["OIDC_JWKS_URL"] = "ftp://keycloak/certs" }, "OIDC_JWKS_URL: scheme must be"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := validEnv()
+			tt.mutate(env)
+			_, err := load(env)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want it to mention %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestLoadIssuerOptionalWithoutAPIRole(t *testing.T) {
+	env := validEnv()
+	delete(env, "OIDC_ISSUER_URL")
+	env["APP_ROLES"] = "consumer,outbox"
+	if _, err := load(env); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

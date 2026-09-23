@@ -33,6 +33,7 @@ const (
 	DefaultRoles           = "api,consumer,outbox,pending"
 	DefaultShutdownTimeout = 25 * time.Second
 	DefaultLogLevel        = "info"
+	DefaultOIDCAudience    = "wallet-api"
 )
 
 // Config is the validated service configuration.
@@ -44,6 +45,7 @@ type Config struct {
 	Roles           []Role
 	ShutdownTimeout time.Duration
 	LogLevel        slog.Level
+	OIDC            OIDC
 }
 
 // AWS holds the AWS SDK settings. Credentials are resolved by the SDK default
@@ -59,6 +61,18 @@ type AWS struct {
 type SQS struct {
 	InputQueueURL  string
 	EventsQueueURL string
+}
+
+// OIDC holds the settings used to validate access tokens locally.
+type OIDC struct {
+	// IssuerURL must equal the "iss" claim of the tokens, byte for byte.
+	IssuerURL string
+	// Audience must appear in the "aud" claim.
+	Audience string
+	// JWKSURL is where the signing keys are fetched. It defaults to the
+	// Keycloak certs endpoint under IssuerURL; set it when the issuer is not
+	// reachable under its public name (e.g. inside the compose network).
+	JWKSURL string
 }
 
 // HasRole reports whether r is enabled in this instance.
@@ -100,6 +114,11 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 			EventsQueueURL: get("SQS_EVENTS_QUEUE_URL", ""),
 		},
 		ShutdownTimeout: DefaultShutdownTimeout,
+		OIDC: OIDC{
+			IssuerURL: get("OIDC_ISSUER_URL", ""),
+			Audience:  get("OIDC_AUDIENCE", DefaultOIDCAudience),
+			JWKSURL:   get("OIDC_JWKS_URL", ""),
+		},
 	}
 
 	roles, err := parseRoles(get("APP_ROLES", DefaultRoles))
@@ -133,6 +152,14 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 		validateURL("SQS_INPUT_QUEUE_URL", cfg.SQS.InputQueueURL, true, "http", "https"),
 		validateURL("SQS_EVENTS_QUEUE_URL", cfg.SQS.EventsQueueURL, true, "http", "https"),
 	)
+	// Only the api role validates tokens.
+	errs = append(errs,
+		validateURL("OIDC_ISSUER_URL", cfg.OIDC.IssuerURL, cfg.HasRole(RoleAPI), "http", "https"),
+		validateURL("OIDC_JWKS_URL", cfg.OIDC.JWKSURL, false, "http", "https"),
+	)
+	if cfg.OIDC.JWKSURL == "" && cfg.OIDC.IssuerURL != "" {
+		cfg.OIDC.JWKSURL = strings.TrimSuffix(cfg.OIDC.IssuerURL, "/") + "/protocol/openid-connect/certs"
+	}
 
 	var problems []string
 	for _, err := range errs {
