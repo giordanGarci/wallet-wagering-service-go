@@ -181,12 +181,18 @@ func TestTransitionsRecordOutcome(t *testing.T) {
 func TestTerminalStatesAreImmutable(t *testing.T) {
 	balance := mustMoney(t, "1.00", "BRL")
 	finishers := map[string]func(*wager.Transaction) error{
-		"process":  func(tx *wager.Transaction) error { return tx.Process(balance, t0) },
-		"reject":   func(tx *wager.Transaction) error { return tx.Reject(wager.FailureInsufficientFunds, balance, t0) },
-		"fail":     func(tx *wager.Transaction) error { return tx.Fail(wager.FailurePermanentError, t0) },
-		"await":    func(tx *wager.Transaction) error { return tx.AwaitReference(t0) },
-		"apply":    func(tx *wager.Transaction) error { _, err := tx.Apply(openWallet(t, "10.00"), wager.Reference{}, t0); return err },
-		"ref miss": func(tx *wager.Transaction) error { _, _, err := tx.RecordReferenceMiss(wager.DefaultPendingPolicy(), t0); return err },
+		"process": func(tx *wager.Transaction) error { return tx.Process(balance, t0) },
+		"reject":  func(tx *wager.Transaction) error { return tx.Reject(wager.FailureInsufficientFunds, balance, t0) },
+		"fail":    func(tx *wager.Transaction) error { return tx.Fail(wager.FailurePermanentError, t0) },
+		"await":   func(tx *wager.Transaction) error { return tx.AwaitReference(t0) },
+		"apply": func(tx *wager.Transaction) error {
+			_, err := tx.Apply(openWallet(t, "10.00"), wager.Reference{}, t0)
+			return err
+		},
+		"ref miss": func(tx *wager.Transaction) error {
+			_, _, err := tx.RecordReferenceMiss(wager.DefaultPendingPolicy(), t0)
+			return err
+		},
 	}
 	for first, finish := range map[string]func(*wager.Transaction) error{
 		"process": finishers["process"], "reject": finishers["reject"], "fail": finishers["fail"],

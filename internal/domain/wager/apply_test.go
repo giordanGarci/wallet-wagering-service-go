@@ -215,10 +215,14 @@ func TestReferenceRules(t *testing.T) {
 
 		// Unsuccessful and non-reversible references.
 		{name: "rejected reference", cmd: cmdOf(wager.KindRefund, "25.00", "bet-1"), balance: "100.00",
-			ref:    func(t *testing.T) *wager.Transaction { return withStatus(t, bet(t), wager.StatusRejected, wager.FailureInsufficientFunds) },
+			ref: func(t *testing.T) *wager.Transaction {
+				return withStatus(t, bet(t), wager.StatusRejected, wager.FailureInsufficientFunds)
+			},
 			status: wager.StatusRejected, code: wager.FailureReferenceUnsuccessful, resolved: true},
 		{name: "failed reference", cmd: cmdOf(wager.KindRollback, "25.00", "bet-1"), balance: "100.00",
-			ref:    func(t *testing.T) *wager.Transaction { return withStatus(t, bet(t), wager.StatusFailed, wager.FailurePermanentError) },
+			ref: func(t *testing.T) *wager.Transaction {
+				return withStatus(t, bet(t), wager.StatusFailed, wager.FailurePermanentError)
+			},
 			status: wager.StatusRejected, code: wager.FailureReferenceUnsuccessful, resolved: true},
 		{name: "ROLLBACK of ROLLBACK", ref: rollbackOf("bet-1", bet), cmd: cmdOf(wager.KindRollback, "25.00", "rollback-0"),
 			balance: "100.00", status: wager.StatusRejected, code: wager.FailureReferenceNotReversible, resolved: true},
