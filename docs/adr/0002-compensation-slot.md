@@ -1,0 +1,3 @@
+# Slot único de compensação por BET
+
+Cada BET pode ser desfeita por no máximo um Reversal (REFUND ou ROLLBACK, o primeiro vence), imposto por índice único parcial na coluna da BET compensada. ROLLBACK de um REFUND é permitido e debita de volta, mas o slot da BET continua consumido, então um novo REFUND da mesma BET é rejeitado com `REFERENCE_ALREADY_COMPENSATED`. ROLLBACK de ROLLBACK é rejeitado. Consideramos slots separados por tipo, mas eles abririam sequências (REFUND, ROLLBACK do REFUND, REFUND) que devolveriam o mesmo débito mais de uma vez em termos de fluxo, exigindo mais estados e testes.
