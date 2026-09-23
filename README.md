@@ -23,7 +23,7 @@ Serviço em Go que movimenta carteiras de jogadores a partir de operações de p
 | --- | --- | --- |
 | `app` | 8080 | API HTTP, consumidor SQS, publisher da outbox e worker de referências pendentes |
 | `postgres` | 5432 | PostgreSQL |
-| `keycloak` | 8081 | IdP OAuth 2.0/OIDC com realm `wallet` provisionado automaticamente ⏳ |
+| `keycloak` | 8081 | IdP OAuth 2.0/OIDC com realm `wallet` provisionado automaticamente (`deploy/keycloak/wallet-realm.json`); porta do host ajustável com `KEYCLOAK_PORT` |
 | `ministack` | 4566 | Emulador AWS (SQS, imagem `ministackorg/ministack`), sem conta nem token |
 | `sqs-init` | | Cria filas e redrive policy e encerra (`deploy/sqs-init/init.sh`) |
 | `migrate` | | Aplica as migrations (CLI `golang-migrate`) e encerra |
@@ -47,8 +47,9 @@ cp .env.example .env
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | `wallet-consumer` / `local-secret` | cadeia padrão do SDK | Credenciais do consumidor no broker |
 | `SQS_INPUT_QUEUE_URL` | `http://ministack:4566/000000000000/wager-transactions.fifo` | obrigatória | Fila de entrada |
 | `SQS_EVENTS_QUEUE_URL` | `http://ministack:4566/000000000000/wallet-events.fifo` | obrigatória | Fila de eventos publicados pela outbox |
-| `OIDC_ISSUER_URL` | `http://keycloak:8081/realms/wallet` | | Issuer esperado nos tokens ⏳ |
-| `OIDC_AUDIENCE` | `wallet-api` | | Audience exigida ⏳ |
+| `OIDC_ISSUER_URL` | `http://localhost:8081/realms/wallet` | obrigatória com o papel `api` | Issuer esperado, idêntico ao claim `iss` dos tokens (no compose, derivado de `KEYCLOAK_PORT`) |
+| `OIDC_AUDIENCE` | `wallet-api` | `wallet-api` | Audience exigida no claim `aud` |
+| `OIDC_JWKS_URL` | `http://keycloak:8080/realms/wallet/protocol/openid-connect/certs` | `<OIDC_ISSUER_URL>/protocol/openid-connect/certs` | Onde buscar as chaves de assinatura, quando o issuer não é alcançável pelo nome público (ex.: dentro da rede do compose) |
 | `APP_ROLES` | `api,consumer,outbox,pending` | todos | Componentes ativos nesta instância (lista separada por vírgula) |
 | `PENDING_MAX_ATTEMPTS` | `8` | | Tentativas antes de rejeitar com `REFERENCE_NOT_FOUND` ⏳ |
 | `SHUTDOWN_TIMEOUT` | `25s` | `25s` | Prazo para concluir trabalho em andamento no `SIGTERM` |
@@ -65,7 +66,7 @@ Por enquanto só o papel `api` está implementado; os demais papéis são aceito
 docker compose up --build
 ```
 
-A ordem de inicialização é: `postgres`, `keycloak` ⏳ e `ministack` saudáveis, depois `migrate` e `sqs-init`, depois `app`. Verifique:
+A ordem de inicialização é: `postgres`, `keycloak` e `ministack` saudáveis, depois `migrate` e `sqs-init`, depois `app`. Verifique:
 
 ```sh
 curl -s localhost:8080/health/live    # {"status":"ok"}
@@ -132,7 +133,26 @@ O realm `wallet` é importado automaticamente pelo Keycloak na subida. Todos os 
 | `provider-b` | `provider-b-secret` | Envia e consulta apenas transações de `provider-b` |
 | `wallet-internal` | `wallet-internal-secret` | Abertura, leitura, ledger e reconciliação de carteiras |
 
-O `providerId` autorizado vem do claim `provider_id` do token. Um corpo com `providerId` diferente do token recebe `403`; uma transação de outro provedor responde `404`.
+Os três clients recebem `wallet-api` no claim `aud` (audience mapper); os de Provider recebem também o claim fixo `provider_id` (`provider-a` ou `provider-b`). O `providerId` autorizado vem desse claim. Um corpo com `providerId` diferente do token recebe `403`; uma transação de outro provedor responde `404` ⏳.
+
+A aplicação valida os tokens localmente, sem chamar o Keycloak a cada requisição: assinatura contra o JWKS em cache (buscado na subida, renovado a cada hora e ao aparecer um `kid` desconhecido, no máximo a cada 30s), `iss` igual a `OIDC_ISSUER_URL`, `aud` contendo `OIDC_AUDIENCE`, `exp` obrigatório e `nbf`, com 30s de tolerância de relógio. Se o JWKS estiver inacessível na subida, a aplicação não inicia.
+
+| Situação | Resposta |
+| --- | --- |
+| Sem `Authorization: Bearer`, token malformado, assinatura inválida, expirado, ainda não válido, de outro issuer ou sem a audience | `401 UNAUTHENTICATED` com `WWW-Authenticate: Bearer` |
+| Token de Provider em endpoint interno (`/wallets...`) | `403 FORBIDDEN` |
+| Token de `wallet-internal` em endpoint de Provider | `403 FORBIDDEN` ⏳ |
+| Token válido de um client sem papel no serviço | `403 FORBIDDEN` |
+
+**Issuer único entre host e containers.** O Keycloak roda com `KC_HOSTNAME=http://localhost:${KEYCLOAK_PORT:-8081}`, então todo token traz `iss=http://localhost:8081/realms/wallet`, seja obtido do host (`localhost:8081`) ou de dentro da rede do compose (`keycloak:8080`). Dentro do compose esse endereço não alcança o Keycloak, por isso o `app` busca o JWKS por `OIDC_JWKS_URL=http://keycloak:8080/...`. Se a porta 8081 estiver ocupada no host, suba com `KEYCLOAK_PORT=8082 docker compose up`: a porta publicada, o issuer do Keycloak e o `OIDC_ISSUER_URL` do `app` mudam juntos (use a mesma porta nos comandos abaixo).
+
+Todo erro da API usa um único corpo, com `code` estável e `message` legível:
+
+```json
+{"code": "WALLET_ALREADY_EXISTS", "message": "a wallet already exists for this player and currency"}
+```
+
+Códigos atuais: `INVALID_REQUEST` (400), `UNAUTHENTICATED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `WALLET_ALREADY_EXISTS` (409), `INTERNAL_ERROR` (500), `NOT_IMPLEMENTED` (501), `SERVICE_UNAVAILABLE` (503, com `Retry-After`).
 
 Obter um token:
 
@@ -148,13 +168,18 @@ PROVIDER_A=$(token provider-a)
 
 ## Exemplos de chamadas
 
-Abrir carteira:
+Abrir carteira (somente `wallet-internal`):
 
 ```sh
 curl -s -X POST localhost:8080/wallets \
   -H "Authorization: Bearer $INTERNAL" -H 'Content-Type: application/json' \
-  -d '{"playerId":"0192f28f-5dc0-7d58-bdb2-814ad6a0f4a1","initialBalance":{"amount":"1000.00","currency":"BRL"}}'
+  -d '{"playerId":"0192f28f-5dc0-7d58-bdb2-814ad6a0f4a1","initialBalance":{"amount":"0.00","currency":"BRL"}}'
+# 201 {"id":"<UUIDv7>","playerId":"0192f28f-...","balance":{"amount":"0.00","currency":"BRL"},"version":1,"createdAt":"..."}
 ```
+
+O corpo é decodificado de forma estrita (campos desconhecidos, JSON extra, valor numérico ou fora da forma canônica `0.00` recebem `400 INVALID_REQUEST`). Uma segunda abertura para o mesmo par (jogador, moeda) recebe `409 WALLET_ALREADY_EXISTS`. Saldo inicial positivo (`"1000.00"`) depende da Opening e, até ela existir, responde `501 NOT_IMPLEMENTED` ⏳.
+
+Consultar a carteira: `GET /wallets/<walletId>` responde `200` com o mesmo corpo, `404 NOT_FOUND` para id desconhecido e `400 INVALID_REQUEST` para id que não é UUID.
 
 Enviar uma aposta (use o `id` retornado como `walletId`):
 
@@ -207,17 +232,19 @@ Os códigos HTTP e corpos de resposta (400, 401, 403, 404, 409, 422, 202, 503) e
 docker compose up -d postgres keycloak ministack migrate sqs-init
 ```
 
-(`keycloak` entra no compose com a autenticação ⏳; até lá, omita-o.)
-
 Os testes de integração criam um banco isolado por execução e filas com sufixo aleatório, então podem rodar em paralelo ao ambiente de desenvolvimento. O harness (`internal/testsupport`) sobe a aplicação Fx dentro do processo de teste e lê os endpoints destas variáveis:
 
 | Variável | Padrão | Uso |
 | --- | --- | --- |
 | `TEST_DATABASE_URL` | `postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable` | Conexão administrativa para `CREATE`/`DROP DATABASE` do banco isolado |
 | `TEST_AWS_ENDPOINT_URL` | `http://localhost:4566` | Endpoint SQS onde as filas isoladas são criadas |
+| `TEST_KEYCLOAK_URL` | `http://localhost:8081` | Keycloak de onde os testes obtêm tokens reais (`testsupport.Token`) e o JWKS |
+| `TEST_OIDC_ISSUER_URL` | `<TEST_KEYCLOAK_URL>/realms/wallet` | Issuer esperado pela aplicação nos testes (difere do anterior só dentro da rede do compose) |
 | `TEST_LOG_LEVEL` | `warn` | Nível de log da aplicação durante os testes |
 
-`scripts/test-race.sh` roda `go test -race` dentro da imagem `golang` da mesma versão do `go.mod` (o race detector exige CGO); com a tag `integration` ou `e2e`, o container entra na rede `wallet_default` do compose e aponta essas variáveis para `postgres` e `ministack`.
+Os testes de autenticação usam tokens reais do Keycloak e, para casos que o Keycloak nunca emitiria (expirado, outra audience, outro issuer, assinatura inválida), `testsupport.Forger`: uma chave RSA de teste publicada em um JWKS local que mescla as chaves do Keycloak com a dela.
+
+`scripts/test-race.sh` roda `go test -race` dentro da imagem `golang` da mesma versão do `go.mod` (o race detector exige CGO); com a tag `integration` ou `e2e`, o container entra na rede `wallet_default` do compose e aponta essas variáveis para `postgres`, `ministack` e `keycloak`.
 
 ### Múltiplas instâncias
 
