@@ -49,7 +49,7 @@ func TestOpenWalletWithZeroBalanceAndGetIt(t *testing.T) {
 
 	var balance, version int64
 	var currency string
-	err = e.app.Pool.QueryRow(context.Background(),
+	err = e.db.QueryRow(context.Background(),
 		"SELECT balance, version, currency FROM wallets WHERE id = $1 AND player_id = $2", id, playerID).
 		Scan(&balance, &version, &currency)
 	if err != nil || balance != 0 || version != 1 || currency != "BRL" {
@@ -148,18 +148,6 @@ func TestOpenWalletRejectsMalformedRequests(t *testing.T) {
 			expectError(t, resp, body, http.StatusBadRequest, "INVALID_REQUEST")
 		})
 	}
-	if n := e.walletCount(t); n != 0 {
-		t.Errorf("wallets = %d, want 0", n)
-	}
-}
-
-// TestOpenWalletWithPositiveBalanceIsNotImplementedYet pins the temporary
-// behaviour until the Opening lands (ticket 04).
-func TestOpenWalletWithPositiveBalanceIsNotImplementedYet(t *testing.T) {
-	e := newEnv(t)
-	resp, body := e.app.Do(t, http.MethodPost, "/wallets", testsupport.Token(t, testsupport.InternalClient),
-		openBody(uuid.New(), "10.00", "BRL"))
-	expectError(t, resp, body, http.StatusNotImplemented, "NOT_IMPLEMENTED")
 	if n := e.walletCount(t); n != 0 {
 		t.Errorf("wallets = %d, want 0", n)
 	}

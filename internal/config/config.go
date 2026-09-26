@@ -46,6 +46,9 @@ type Config struct {
 	ShutdownTimeout time.Duration
 	LogLevel        slog.Level
 	OIDC            OIDC
+	Outbox          Outbox
+	Pending         Pending
+	Consumer        Consumer
 }
 
 // AWS holds the AWS SDK settings. Credentials are resolved by the SDK default
@@ -61,6 +64,10 @@ type AWS struct {
 type SQS struct {
 	InputQueueURL  string
 	EventsQueueURL string
+	// DLQQueueURL is the input queue's dead-letter queue, where the
+	// consumer sends permanent failures explicitly. Required with the
+	// consumer role.
+	DLQQueueURL string
 }
 
 // OIDC holds the settings used to validate access tokens locally.
@@ -112,6 +119,7 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 		SQS: SQS{
 			InputQueueURL:  get("SQS_INPUT_QUEUE_URL", ""),
 			EventsQueueURL: get("SQS_EVENTS_QUEUE_URL", ""),
+			DLQQueueURL:    get("SQS_DLQ_QUEUE_URL", ""),
 		},
 		ShutdownTimeout: DefaultShutdownTimeout,
 		OIDC: OIDC{
@@ -120,6 +128,10 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 			JWKSURL:   get("OIDC_JWKS_URL", ""),
 		},
 	}
+
+	cfg.Outbox = loadOutbox(get, &errs)
+	cfg.Pending = loadPending(get, &errs)
+	cfg.Consumer = loadConsumer(get, &errs)
 
 	roles, err := parseRoles(get("APP_ROLES", DefaultRoles))
 	if err != nil {
@@ -151,6 +163,8 @@ func FromLookup(lookup func(string) (string, bool)) (Config, error) {
 		validateURL("AWS_ENDPOINT_URL", cfg.AWS.EndpointURL, false, "http", "https"),
 		validateURL("SQS_INPUT_QUEUE_URL", cfg.SQS.InputQueueURL, true, "http", "https"),
 		validateURL("SQS_EVENTS_QUEUE_URL", cfg.SQS.EventsQueueURL, true, "http", "https"),
+		// Only the consumer role sends to the dead-letter queue.
+		validateURL("SQS_DLQ_QUEUE_URL", cfg.SQS.DLQQueueURL, cfg.HasRole(RoleConsumer), "http", "https"),
 	)
 	// Only the api role validates tokens.
 	errs = append(errs,

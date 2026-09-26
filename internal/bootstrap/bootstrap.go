@@ -14,30 +14,38 @@ import (
 
 	"github.com/junglegaming/backend-challenge-go/internal/app"
 	"github.com/junglegaming/backend-challenge-go/internal/config"
+	"github.com/junglegaming/backend-challenge-go/internal/domain/wager"
 	"github.com/junglegaming/backend-challenge-go/internal/httpapi"
 	"github.com/junglegaming/backend-challenge-go/internal/observability"
 	"github.com/junglegaming/backend-challenge-go/internal/postgres"
 	"github.com/junglegaming/backend-challenge-go/internal/sqs"
+	"github.com/junglegaming/backend-challenge-go/internal/worker"
 )
 
 // StartTimeout bounds the OnStart hooks (dependency checks, listeners).
 const StartTimeout = 30 * time.Second
 
-// roleModules maps each role to its Fx module. A role absent from the map is
-// accepted by config but not implemented yet; the app logs a warning and
-// runs without it. Later tickets add their module here.
+// roleModules maps each role (config.KnownRoles, validated by config.Load)
+// to its Fx module.
 var roleModules = map[config.Role]fx.Option{
-	config.RoleAPI: httpapi.Module,
-	// config.RoleConsumer: sqs.ConsumerModule,   (ticket 12)
-	// config.RoleOutbox:   worker.OutboxModule,  (ticket 09)
-	// config.RolePending:  worker.PendingModule, (ticket 11)
+	config.RoleAPI:      httpapi.Module,
+	config.RoleConsumer: sqs.ConsumerModule,
+	config.RoleOutbox:   worker.OutboxModule,
+	config.RolePending:  worker.PendingModule,
 }
+
+// roleOrder is the registration order of the role modules, whatever the
+// order in APP_ROLES. Fx runs stop hooks in reverse registration order, so
+// the consumer stops polling before the workers finish or release leases.
+var roleOrder = []config.Role{config.RolePending, config.RoleOutbox, config.RoleConsumer, config.RoleAPI}
 
 // Options returns the full application graph for cfg. Extra options are
 // appended last (tests use them for fx.Populate or fx.Decorate).
 func Options(cfg config.Config, extra ...fx.Option) fx.Option {
 	opts := []fx.Option{
 		fx.Supply(cfg),
+		// Every role schedules Pending Reference retries with PENDING_*.
+		fx.Provide(func(cfg config.Config) wager.PendingPolicy { return cfg.Pending.Policy() }),
 		fx.StartTimeout(StartTimeout),
 		fx.StopTimeout(cfg.ShutdownTimeout),
 		fx.WithLogger(func(log *slog.Logger) fxevent.Logger {
@@ -46,25 +54,21 @@ func Options(cfg config.Config, extra ...fx.Option) fx.Option {
 			return l
 		}),
 
-		// Infrastructure shared by every role. Constructors run in dependency
-		// order and stop hooks in reverse, so the HTTP server (which depends
-		// on the pool and SQS client through readiness checks) stops first
-		// and the pool and AWS client close last.
+		// Infrastructure shared by every role. Stop hooks run in reverse
+		// registration order: the HTTP server, registered last, stops
+		// accepting first; then the consumer, then the workers; the pool and
+		// the AWS client, registered first, close last.
 		observability.Module,
 		postgres.Module,
 		app.Module,
 		sqs.Module,
-		httpapi.ServerModule,
 	}
-	for _, r := range cfg.Roles {
-		if m, ok := roleModules[r]; ok {
-			opts = append(opts, m)
-			continue
+	for _, r := range roleOrder {
+		if cfg.HasRole(r) {
+			opts = append(opts, roleModules[r])
 		}
-		opts = append(opts, fx.Invoke(func(log *slog.Logger) {
-			log.Warn("role not implemented yet, skipping", "role", string(r))
-		}))
 	}
+	opts = append(opts, httpapi.ServerModule)
 	opts = append(opts, extra...)
 	return fx.Options(opts...)
 }

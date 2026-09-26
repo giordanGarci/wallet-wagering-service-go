@@ -4,12 +4,12 @@
 
 **Blocked by:** 06 (Idempotency and Replay)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] WIN com valor positivo credita a Wallet, gera Ledger Entry de crédito, `WagerTransactionProcessed` e `WalletBalanceChanged`
-- [ ] WIN com `referenceExternalTransactionId` resolve a Reference por `(providerId, referenceExternalTransactionId)` e exige BET da mesma Round, jogador, Wallet e moeda; divergência rejeita com `REFERENCE_MISMATCH`
-- [ ] LOSS exige `money.amount` igual a `"0.00"` e a moeda da Wallet; valor diferente de zero responde 400
-- [ ] LOSS processada gera apenas `WagerTransactionProcessed`, sem ledger, sem `WalletBalanceChanged` e sem mudança de versão
-- [ ] WIN com valor zero responde 400
-- [ ] Testes unitários da política de zero por tipo
-- [ ] Testes de integração de WIN, WIN com Reference e LOSS, incluindo Replay
+- [x] WIN com valor positivo credita a Wallet, gera Ledger Entry de crédito, `WagerTransactionProcessed` e `WalletBalanceChanged`
+- [x] WIN com `referenceExternalTransactionId` resolve a Reference por `(providerId, referenceExternalTransactionId)` e exige BET da mesma Round, jogador, Wallet e moeda; divergência rejeita com `REFERENCE_MISMATCH`
+- [x] LOSS exige `money.amount` igual a `"0.00"` e a moeda da Wallet; valor diferente de zero responde 400
+- [x] LOSS processada gera apenas `WagerTransactionProcessed`, sem ledger, sem `WalletBalanceChanged` e sem mudança de versão
+- [x] WIN com valor zero responde 400
+- [x] Testes unitários da política de zero por tipo
+- [x] Testes de integração de WIN, WIN com Reference e LOSS, incluindo Replay

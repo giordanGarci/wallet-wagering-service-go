@@ -4,12 +4,12 @@
 
 **Blocked by:** 13 (Three-instance e2e suite)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Hook de crashpoint compilado apenas com a build tag `faultinject`, ativado por `CRASH_AT`, encerra o processo com código 137
-- [ ] `consumer.after_commit`: reentrega deduplicada pela inbox, efeito financeiro único
-- [ ] `outbox.before_publish`: outra instância publica o evento
-- [ ] `outbox.after_publish`: republicação preserva o `eventId`
-- [ ] `pending.after_claim`: lease expira e outra instância conclui a Pending Reference
-- [ ] Builds sem a tag não contêm o hook
-- [ ] Reconciliation consistente ao final de cada cenário
+- [x] Hook de crashpoint compilado apenas com a build tag `faultinject`, ativado por `CRASH_AT`, encerra o processo com código 137
+- [x] `consumer.after_commit`: reentrega deduplicada pela inbox, efeito financeiro único
+- [x] `outbox.before_publish`: outra instância publica o evento
+- [x] `outbox.after_publish`: republicação preserva o `eventId`
+- [x] `pending.after_claim`: lease expira e outra instância conclui a Pending Reference
+- [x] Builds sem a tag não contêm o hook
+- [x] Reconciliation consistente ao final de cada cenário

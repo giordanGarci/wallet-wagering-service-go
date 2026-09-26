@@ -15,6 +15,7 @@ func validEnv() map[string]string {
 		"AWS_ENDPOINT_URL":     "http://localhost:4566",
 		"SQS_INPUT_QUEUE_URL":  "http://localhost:4566/000000000000/wager-transactions.fifo",
 		"SQS_EVENTS_QUEUE_URL": "http://localhost:4566/000000000000/wallet-events.fifo",
+		"SQS_DLQ_QUEUE_URL":    "http://localhost:4566/000000000000/wager-transactions-dlq.fifo",
 		"OIDC_ISSUER_URL":      "http://localhost:8081/realms/wallet",
 	}
 }

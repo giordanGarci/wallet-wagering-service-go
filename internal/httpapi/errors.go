@@ -20,7 +20,6 @@ const (
 	CodeForbidden           = "FORBIDDEN"
 	CodeNotFound            = "NOT_FOUND"
 	CodeWalletAlreadyExists = "WALLET_ALREADY_EXISTS"
-	CodeNotImplemented      = "NOT_IMPLEMENTED"
 	CodeServiceUnavailable  = "SERVICE_UNAVAILABLE"
 	CodeInternal            = "INTERNAL_ERROR"
 )
@@ -62,10 +61,10 @@ func WriteAppError(w http.ResponseWriter, r *http.Request, log *slog.Logger, err
 		WriteError(w, http.StatusBadRequest, CodeInvalidRequest, detail(err, app.ErrInvalidCommand))
 	case errors.Is(err, app.ErrWalletNotFound):
 		WriteError(w, http.StatusNotFound, CodeNotFound, "wallet not found")
+	case errors.Is(err, app.ErrTransactionNotFound):
+		WriteError(w, http.StatusNotFound, CodeNotFound, "wager transaction not found")
 	case errors.Is(err, app.ErrWalletAlreadyExists):
 		WriteError(w, http.StatusConflict, CodeWalletAlreadyExists, "a wallet already exists for this player and currency")
-	case errors.Is(err, app.ErrNotImplemented):
-		WriteError(w, http.StatusNotImplemented, CodeNotImplemented, detail(err, app.ErrNotImplemented))
 	case errors.Is(err, app.ErrTransient):
 		log.WarnContext(r.Context(), "transient failure", "method", r.Method, "path", r.URL.Path, "error", err)
 		WriteError(w, http.StatusServiceUnavailable, CodeServiceUnavailable, "temporarily unavailable, retry later")

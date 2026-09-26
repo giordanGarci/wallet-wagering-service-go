@@ -42,7 +42,7 @@ func (w *Wallet) Credit(transactionID uuid.UUID, m money.Money, now time.Time) (
 // the version of a Wallet opened with a positive balance at 1.
 func (w *Wallet) ApplyOpening(transactionID uuid.UUID, m money.Money, now time.Time) (ledger.Entry, error) {
 	if w.version != InitialVersion || !w.balance.IsZero() {
-		return ledger.Entry{}, fmt.Errorf("%w: opening requires a fresh wallet (balance %s, version %d)", ErrInvalidMovement, w.balance, w.version)
+		return ledger.Entry{}, fmt.Errorf("%w: opening requires a fresh wallet (version %d)", ErrInvalidMovement, w.version)
 	}
 	return w.move(transactionID, ledger.Credit, m, now, false)
 }
@@ -52,7 +52,7 @@ func (w *Wallet) move(transactionID uuid.UUID, dir ledger.Direction, m money.Mon
 		return ledger.Entry{}, fmt.Errorf("%w: transaction id is required", ErrInvalidMovement)
 	}
 	if !m.IsValid() || m.IsZero() || m.IsNegative() {
-		return ledger.Entry{}, fmt.Errorf("%w: amount %s must be positive", ErrInvalidMovement, m)
+		return ledger.Entry{}, fmt.Errorf("%w: amount must be positive", ErrInvalidMovement)
 	}
 	if m.Currency() != w.Currency() {
 		return ledger.Entry{}, fmt.Errorf("%w: %w: wallet %s, movement %s", ErrCurrencyMismatch, money.ErrCurrencyMismatch, w.Currency(), m.Currency())
@@ -68,7 +68,7 @@ func (w *Wallet) move(transactionID uuid.UUID, dir ledger.Direction, m money.Mon
 		return ledger.Entry{}, fmt.Errorf("wallet %s: %w", w.id, err)
 	}
 	if after.IsNegative() {
-		return ledger.Entry{}, fmt.Errorf("%w: balance %s, debit %s", ErrInsufficientFunds, w.balance, m)
+		return ledger.Entry{}, fmt.Errorf("%w: debit exceeds balance", ErrInsufficientFunds)
 	}
 	entry, err := ledger.New(w.id, transactionID, dir, m, w.balance, after, now)
 	if err != nil {

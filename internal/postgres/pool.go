@@ -17,8 +17,8 @@ import (
 )
 
 // Module provides *pgxpool.Pool, the "postgres" readiness check, the
-// app.UnitOfWork and the pool-bound app.WalletRepository (reads outside a
-// transaction).
+// app.UnitOfWork and the pool-bound app.WalletRepository and
+// app.LedgerRepository (reads outside a transaction).
 //
 // The pool is created lazily in the constructor; OnStart pings it so the
 // app fails fast when the database is unreachable, and OnStop closes it.
@@ -31,6 +31,11 @@ var Module = fx.Module("postgres",
 		fx.Annotate(NewUnitOfWork, fx.As(new(app.UnitOfWork))),
 		fx.Annotate(func(pool *pgxpool.Pool) *WalletRepository { return NewWalletRepository(pool) },
 			fx.As(new(app.WalletRepository))),
+		fx.Annotate(func(pool *pgxpool.Pool) *LedgerRepository { return NewLedgerRepository(pool) },
+			fx.As(new(app.LedgerRepository))),
+		fx.Annotate(func(pool *pgxpool.Pool) *TransactionRepository { return NewTransactionRepository(pool) },
+			fx.As(new(app.TransactionRepository))),
+		fx.Annotate(NewReconciliationReader, fx.As(new(app.ReconciliationReader))),
 	),
 )
 

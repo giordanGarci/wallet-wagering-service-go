@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"go.uber.org/fx"
 
 	"github.com/junglegaming/backend-challenge-go/internal/testsupport"
 )
@@ -30,19 +32,51 @@ type walletBody struct {
 }
 
 // env is one app with a Forger-backed JWKS, so both real Keycloak tokens
-// and forged ones are accepted when valid.
+// and forged ones are accepted when valid. The app connects as the
+// least-privilege role wallet_app; db connects as the schema owner for
+// assertions.
 type env struct {
 	app    *testsupport.App
 	forger *testsupport.Forger
+	infra  *testsupport.Infra
+	db     *pgxpool.Pool
 }
 
-func newEnv(t *testing.T) *env {
+// newEnv starts the app; extra Fx options are appended to its graph (e.g.
+// fx.Decorate to capture logs, see captureLogs).
+func newEnv(t *testing.T, extra ...fx.Option) *env {
 	t.Helper()
 	infra := testsupport.NewInfra(t)
 	forger := testsupport.NewForger(t)
 	cfg := infra.Config
 	cfg.OIDC.JWKSURL = forger.JWKSURL()
-	return &env{app: testsupport.StartApp(t, cfg), forger: forger}
+	return &env{
+		app:    testsupport.StartApp(t, cfg, extra...),
+		forger: forger,
+		infra:  infra,
+		db:     testsupport.OpenPool(t, infra.DatabaseURL),
+	}
+}
+
+// count runs a SELECT count(*) query as the owner.
+func (e *env) count(t *testing.T, query string, args ...any) int {
+	t.Helper()
+	var n int
+	if err := e.db.QueryRow(context.Background(), query, args...).Scan(&n); err != nil {
+		t.Fatalf("%s: %v", query, err)
+	}
+	return n
+}
+
+// openWalletWith opens a wallet for playerID with amount BRL and returns it.
+func (e *env) openWalletWith(t *testing.T, playerID uuid.UUID, amount string) walletBody {
+	t.Helper()
+	resp, body := e.app.Do(t, http.MethodPost, "/wallets", testsupport.Token(t, testsupport.InternalClient),
+		openBody(playerID, amount, "BRL"))
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("open wallet with %s = %d %s, want 201", amount, resp.StatusCode, body)
+	}
+	return decode[walletBody](t, body)
 }
 
 func openBody(playerID uuid.UUID, amount, currency string) string {
@@ -76,7 +110,7 @@ func expectError(t *testing.T, resp *http.Response, body []byte, status int, cod
 func (e *env) walletCount(t *testing.T) int {
 	t.Helper()
 	var n int
-	if err := e.app.Pool.QueryRow(context.Background(), "SELECT count(*) FROM wallets").Scan(&n); err != nil {
+	if err := e.db.QueryRow(context.Background(), "SELECT count(*) FROM wallets").Scan(&n); err != nil {
 		t.Fatalf("count wallets: %v", err)
 	}
 	return n

@@ -15,14 +15,15 @@ import (
 
 // WalletHandlers serves the internal Wallet endpoints.
 type WalletHandlers struct {
-	open *app.OpenWallet
-	get  *app.GetWallet
-	log  *slog.Logger
+	open   *app.OpenWallet
+	get    *app.GetWallet
+	ledger *app.ListLedger
+	log    *slog.Logger
 }
 
 // NewWalletHandlers builds the handlers.
-func NewWalletHandlers(open *app.OpenWallet, get *app.GetWallet, log *slog.Logger) *WalletHandlers {
-	return &WalletHandlers{open: open, get: get, log: log}
+func NewWalletHandlers(open *app.OpenWallet, get *app.GetWallet, ledger *app.ListLedger, log *slog.Logger) *WalletHandlers {
+	return &WalletHandlers{open: open, get: get, ledger: ledger, log: log}
 }
 
 // OpenWalletRoute is POST /wallets, internal client only.
@@ -79,6 +80,8 @@ func (h *WalletHandlers) Open(w http.ResponseWriter, r *http.Request) {
 		WriteAppError(w, r, h.log, err)
 		return
 	}
+	h.log.InfoContext(r.Context(), "wallet opened",
+		"walletId", opened.ID(), "playerId", opened.PlayerID(), "currency", opened.Currency().Code())
 	w.Header().Set("Location", "/wallets/"+opened.ID().String())
 	WriteJSON(w, http.StatusCreated, toWalletResponse(opened))
 }

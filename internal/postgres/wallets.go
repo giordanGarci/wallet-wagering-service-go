@@ -85,3 +85,29 @@ func scanWallet(row pgx.Row) (*wallet.Wallet, error) {
 	}
 	return wallet.Rehydrate(id, playerID, amount, version, createdAt, updatedAt)
 }
+
+// GetForUpdate reads a Wallet and locks its row until the enclosing
+// transaction ends (ADR-0003).
+func (r *WalletRepository) GetForUpdate(ctx context.Context, id uuid.UUID) (*wallet.Wallet, error) {
+	row := r.db.QueryRow(ctx, `
+		SELECT id, player_id, currency, balance, version, created_at, updated_at
+		FROM wallets WHERE id = $1 FOR UPDATE`, id)
+	return scanWallet(row)
+}
+
+// Update writes the balance, version and updatedAt of w, guarded by the
+// version read under the lock. Zero affected rows is a lost update in the
+// making and fails with app.ErrConcurrencyConflict.
+func (r *WalletRepository) Update(ctx context.Context, w *wallet.Wallet, expectedVersion int64) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE wallets SET balance = $2, version = $3, updated_at = $4
+		WHERE id = $1 AND version = $5`,
+		w.ID(), w.Balance().MinorUnits(), w.Version(), w.UpdatedAt(), expectedVersion)
+	if err != nil {
+		return classify(fmt.Errorf("postgres: update wallet %s: %w", w.ID(), err))
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: wallet %s is no longer at version %d", app.ErrConcurrencyConflict, w.ID(), expectedVersion)
+	}
+	return nil
+}

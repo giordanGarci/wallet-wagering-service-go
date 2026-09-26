@@ -1,5 +1,5 @@
-// Package sqs owns the AWS SQS client and, in later tickets, the input queue
-// consumer and the outbox publisher.
+// Package sqs owns the AWS SQS client, the input queue consumer
+// (ConsumerModule) and the outbox events publisher.
 package sqs
 
 import (
@@ -57,9 +57,13 @@ func NewClient(lc fx.Lifecycle, cfg config.Config, log *slog.Logger) (*awssqs.Cl
 	return client, nil
 }
 
-// NewReadinessCheck verifies that the input and events queues are reachable.
+// NewReadinessCheck verifies that the input, events and (when configured)
+// dead-letter queues are reachable.
 func NewReadinessCheck(client *awssqs.Client, cfg config.Config) health.Check {
 	queues := []string{cfg.SQS.InputQueueURL, cfg.SQS.EventsQueueURL}
+	if cfg.SQS.DLQQueueURL != "" {
+		queues = append(queues, cfg.SQS.DLQQueueURL)
+	}
 	return health.Check{
 		Name: "sqs",
 		Check: func(ctx context.Context) error {

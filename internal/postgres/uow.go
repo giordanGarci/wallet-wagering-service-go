@@ -35,4 +35,11 @@ type txRepos struct {
 	tx pgx.Tx
 }
 
-func (r txRepos) Wallets() app.WalletRepository { return NewWalletRepository(r.tx) }
+func (r txRepos) Wallets() app.WalletRepository           { return NewWalletRepository(r.tx) }
+func (r txRepos) Transactions() app.TransactionRepository { return NewTransactionRepository(r.tx) }
+func (r txRepos) Ledger() app.LedgerRepository            { return NewLedgerRepository(r.tx) }
+func (r txRepos) Outbox() app.OutboxRepository            { return NewOutboxRepository(r.tx) }
+func (r txRepos) Pending() app.PendingReferenceRepository {
+	return NewPendingReferenceRepository(r.tx)
+}
+func (r txRepos) Inbox() app.InboxRepository { return NewInboxRepository(r.tx) }

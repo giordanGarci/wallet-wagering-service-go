@@ -48,7 +48,8 @@ const (
 const TimeLayout = "2006-01-02T15:04:05.000000Z07:00"
 
 // Meta carries the tracing identifiers of the operation that caused the
-// event. CorrelationID is required (HTTP request id or SQS messageId);
+// event. CorrelationID is required (X-Correlation-Id header, the envelope
+// or attribute correlationId, or a generated UUIDv7);
 // CausationID is optional.
 type Meta struct {
 	CorrelationID string

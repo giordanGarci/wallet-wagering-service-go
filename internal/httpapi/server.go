@@ -40,9 +40,9 @@ func AsRoute(constructor any) any {
 	return fx.Annotate(constructor, fx.ResultTags(RoutesGroup))
 }
 
-// ServerModule provides and starts *Server. Its lifecycle hook is appended
-// after the hooks of everything it depends on (pool, SQS client), so on stop
-// the server stops accepting connections first.
+// ServerModule provides and starts *Server. bootstrap registers it after the
+// role modules, so its hook starts last (traffic arrives once every
+// component runs) and stops first (no new requests during shutdown).
 var ServerModule = fx.Module("httpserver",
 	fx.Provide(NewServer),
 	fx.Invoke(func(*Server) {}),
@@ -83,7 +83,7 @@ func NewServer(p ServerParams) (*Server, error) {
 
 	s := &Server{srv: &http.Server{
 		Addr:              p.Config.HTTPAddr,
-		Handler:           mux,
+		Handler:           WithCorrelation(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ErrorLog:          slog.NewLogLogger(p.Log.Handler(), slog.LevelError),
 	}}

@@ -127,7 +127,7 @@ func (m Money) Add(o Money) (Money, error) {
 	}
 	if (o.minor > 0 && m.minor > math.MaxInt64-o.minor) ||
 		(o.minor < 0 && m.minor < math.MinInt64-o.minor) {
-		return Money{}, wrap(ErrOverflow, "%s + %s", m, o)
+		return Money{}, wrap(ErrOverflow, "addition out of range")
 	}
 	return Money{minor: m.minor + o.minor, currency: m.currency}, nil
 }
@@ -139,7 +139,7 @@ func (m Money) Sub(o Money) (Money, error) {
 	}
 	if (o.minor < 0 && m.minor > math.MaxInt64+o.minor) ||
 		(o.minor > 0 && m.minor < math.MinInt64+o.minor) {
-		return Money{}, wrap(ErrOverflow, "%s - %s", m, o)
+		return Money{}, wrap(ErrOverflow, "subtraction out of range")
 	}
 	return Money{minor: m.minor - o.minor, currency: m.currency}, nil
 }
@@ -150,7 +150,7 @@ func (m Money) Neg() (Money, error) {
 		return Money{}, wrap(ErrUninitialized, "operand is uninitialized")
 	}
 	if m.minor == math.MinInt64 {
-		return Money{}, wrap(ErrOverflow, "-(%s)", m)
+		return Money{}, wrap(ErrOverflow, "negation out of range")
 	}
 	return Money{minor: -m.minor, currency: m.currency}, nil
 }

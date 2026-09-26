@@ -1,0 +1,3 @@
+# Ordem por Wallet garantida no claim da outbox
+
+Os Outbox Events de uma Wallet (`aggregateId`) são publicados no `MessageGroupId` dela e na ordem de gravação (`seq`), mesmo com vários publishers. O claim só reivindica um evento quando todos os eventos anteriores não publicados da mesma Wallet entram no mesmo claim; o lote sai em ordem de `seq` e uma falha de envio libera os eventos seguintes daquela Wallet. Consideramos confiar só no grupo FIFO, mas o SQS ordena pelo momento do envio: dois publishers com lotes diferentes da mesma Wallet poderiam enviar um evento novo antes de um antigo. O custo é bloqueio de cabeça de fila por Wallet: um evento que falha segura os seguintes da mesma Wallet até ser publicado, sem afetar as demais.

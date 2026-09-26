@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -222,5 +223,21 @@ func TestPackageHygiene(t *testing.T) {
 			}
 			return true
 		})
+	}
+}
+
+// Error text reaches logs, which must never carry amounts or balances.
+func TestOverflowErrorsCarryNoAmounts(t *testing.T) {
+	brl, _ := money.ParseCurrency("BRL")
+	max, _ := money.FromMinorUnits(math.MaxInt64, brl)
+	min, _ := money.FromMinorUnits(math.MinInt64, brl)
+	one, _ := money.FromMinorUnits(1, brl)
+	_, addErr := max.Add(one)
+	_, subErr := min.Sub(one)
+	_, negErr := min.Neg()
+	for _, err := range []error{addErr, subErr, negErr} {
+		if err == nil || strings.ContainsAny(err.Error(), "0123456789") {
+			t.Errorf("overflow error %q must exist and carry no amount", err)
+		}
 	}
 }

@@ -146,6 +146,7 @@ func NewInfra(t testing.TB) *Infra {
 			"AWS_REGION":           region,
 			"SQS_INPUT_QUEUE_URL":  inf.InputQueueURL,
 			"SQS_EVENTS_QUEUE_URL": inf.EventsQueueURL,
+			"SQS_DLQ_QUEUE_URL":    inf.DLQQueueURL,
 			"APP_ROLES":            "api",
 			"SHUTDOWN_TIMEOUT":     "10s",
 			"LOG_LEVEL":            env("TEST_LOG_LEVEL", "warn"),

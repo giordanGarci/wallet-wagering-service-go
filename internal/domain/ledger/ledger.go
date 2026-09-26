@@ -83,10 +83,10 @@ func build(id, walletID, transactionID uuid.UUID, direction Direction, amount, b
 		return Entry{}, fmt.Errorf("%w: money, balanceBefore and balanceAfter are required", ErrInvalidEntry)
 	}
 	if amount.IsZero() || amount.IsNegative() {
-		return Entry{}, fmt.Errorf("%w: amount %s must be positive", ErrInvalidEntry, amount)
+		return Entry{}, fmt.Errorf("%w: amount must be positive", ErrInvalidEntry)
 	}
 	if before.IsNegative() || after.IsNegative() {
-		return Entry{}, fmt.Errorf("%w: balances must not be negative (%s -> %s)", ErrInvalidEntry, before, after)
+		return Entry{}, fmt.Errorf("%w: balances must not be negative", ErrInvalidEntry)
 	}
 	var expected money.Money
 	var err error
@@ -99,7 +99,7 @@ func build(id, walletID, transactionID uuid.UUID, direction Direction, amount, b
 		return Entry{}, fmt.Errorf("%w: %w", ErrInvalidEntry, err)
 	}
 	if !expected.Equal(after) {
-		return Entry{}, fmt.Errorf("%w: %s %s from %s gives %s, got %s", ErrInvalidEntry, direction, amount, before, expected, after)
+		return Entry{}, fmt.Errorf("%w: %s does not match balanceBefore and amount", ErrInvalidEntry, direction)
 	}
 	return Entry{
 		id:            id,

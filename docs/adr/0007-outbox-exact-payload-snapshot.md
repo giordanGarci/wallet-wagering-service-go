@@ -1,0 +1,3 @@
+# Payload da outbox gravado como texto exato do envelope
+
+O Outbox Event é serializado uma única vez, no commit que o origina, e `outbox_events.payload` guarda esses bytes como `text` (com `CHECK (payload IS JSON OBJECT)`); o publisher envia o texto sem desserializar. Toda republicação, por qualquer instância, carrega o mesmo `eventId` e o mesmo conteúdo byte a byte. Consideramos `jsonb`, mas ele reordena chaves e normaliza espaços e números, então o corpo publicado poderia diferir do gravado e de uma republicação anterior; reconstruir o envelope a partir das tabelas de domínio no momento do envio refletiria o estado atual, e o evento deixaria de ser um snapshot imutável.

@@ -20,6 +20,7 @@ func TestGraphIsComplete(t *testing.T) {
 					"DATABASE_URL":         "postgres://wallet:wallet@localhost:5432/wallet",
 					"SQS_INPUT_QUEUE_URL":  "http://localhost:4566/000000000000/in.fifo",
 					"SQS_EVENTS_QUEUE_URL": "http://localhost:4566/000000000000/out.fifo",
+					"SQS_DLQ_QUEUE_URL":    "http://localhost:4566/000000000000/dlq.fifo",
 					"OIDC_ISSUER_URL":      "http://localhost:8081/realms/wallet",
 				}[k]
 				return v, ok
