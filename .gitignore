@@ -1,2 +1,9 @@
 .claude/
 .env
+
+# AI/agent docs (local only)
+CLAUDE.md
+AGENTS.md
+docs/agents/
+.scratch/
+.codegraph/
